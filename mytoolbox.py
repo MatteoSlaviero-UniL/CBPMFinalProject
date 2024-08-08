@@ -61,24 +61,24 @@ def fidelity(t, initial_state, H0, n_evolution, evolution_operator, w, amp):
     Returns:
     - fidelity (float): Fidelity of the state after evolution.
     """
-    # Generate parameters dictionary for hashing and caching
-    params = {
-        't': t,
-        'initial_state': initial_state.full().tolist(),
-        'H0': H0.full().tolist(),
-        'n_evolution': n_evolution,
-        'evolution_operator': evolution_operator.full().tolist(),
-        'w': w,
-        'amp': amp
-    }
+    # # Generate parameters dictionary for hashing and caching
+    # params = {
+    #     't': t,
+    #     'initial_state': initial_state.full().tolist(),
+    #     'H0': H0.full().tolist(),
+    #     'n_evolution': n_evolution,
+    #     'evolution_operator': evolution_operator.full().tolist(),
+    #     'w': w,
+    #     'amp': amp
+    # }
 
-    # Generate cache filename
-    cache_filename = generate_cache_filename(params)
+    # # Generate cache filename
+    # cache_filename = generate_cache_filename(params)
 
-    # Check if cache file exists
-    if os.path.exists(cache_filename):
-        # Read from cache
-        return read_cache(cache_filename)
+    # # Check if cache file exists
+    # if os.path.exists(cache_filename):
+    #     # Read from cache
+    #     return read_cache(cache_filename)
 
     # Compute fidelity
     density_matrix = initial_state * initial_state.dag()
@@ -87,8 +87,8 @@ def fidelity(t, initial_state, H0, n_evolution, evolution_operator, w, amp):
     result = qt.mesolve(H, initial_state, times, args={"w": w, 'amp': amp})
     fidelity_value = qt.expect(density_matrix, result.states[-1])
 
-    # Write to cache
-    write_cache(cache_filename, params, fidelity_value)
+    # # Write to cache
+    # write_cache(cache_filename, params, fidelity_value)
 
     return fidelity_value
 
@@ -110,8 +110,9 @@ def hamiltonian_given_B(D, g_e, B, polar, azimuthal):
     Bx = B * np.sin(np.radians(polar)) * np.cos(np.radians(azimuthal))
     By = B * np.sin(np.radians(polar)) * np.sin(np.radians(azimuthal))
 
-    # Sanity check to ensure the magnetic field is correctly calculated
-    assert np.abs(Bx**2 + By**2 + Bz**2 - B**2) < B / 1000
+    if not B == 0:
+        # Sanity check to ensure the magnetic field is correctly calculated
+        assert np.abs(Bx**2 + By**2 + Bz**2 - B**2) <= B / 1000
 
     H0 = D * Sz**2 + g_e * (Bz * Sz + Bx * Sx + By * Sy)
     return H0
