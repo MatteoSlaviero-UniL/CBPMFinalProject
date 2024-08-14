@@ -203,6 +203,62 @@ def save_fidelities_to_csv(file_path, params, fidelities):
         for frequency, fidelity in zip(params['frequencies'], fidelities):
             writer.writerow([frequency, fidelity])
 
+def odmr_cartesian(D, g_e, B_field, orientation, frequencies, t, n_evolution, initial_state, evolution_operator, amp):
+    """
+    Compute ODMR signal for given parameters in Cartesian coordinates.
+
+    Parameters:
+    - D (float): Zero-field splitting in GHz.
+    - g_e (float): Gyromagnetic ratio of the electron in GHz/T.
+    - B_field (tuple): Magnetic field vector in Cartesian coordinates (Bx, By, Bz) in Tesla.
+    - orientation (tuple): NV orientation vector in Cartesian coordinates (nx, ny, nz).
+    - frequencies (list): List of frequencies for which to compute fidelity.
+    - t (float): Time for evolution under Hamiltonian before fidelity computation.
+    - n_evolution (int): Number of data points for numerical solution of Schrödinger equation.
+    - initial_state (Qobj): Initial state for evolution.
+    - evolution_operator (Qobj): Operator under which Hamiltonian is pulsed.
+    - amp (float): Amplitude of applied pulse.
+
+    Returns:
+    - fidelities (list): List of fidelities for each frequency.
+    """
+    # Create cache directory if it doesn't exist
+    cache_dir = 'cache_odmr_cartesian'
+    if not os.path.exists(cache_dir):
+        os.makedirs(cache_dir)
+
+    # Generate a hash for the parameters
+    params = (D, g_e, B_field, orientation, tuple(frequencies), t, n_evolution, amp)
+    hash_str = parameter_hash(params)
+    cache_file = os.path.join(cache_dir, f'{hash_str}.csv')
+
+    # Check if the cache file exists
+    if os.path.exists(cache_file):
+        return load_fidelities_from_csv(cache_file)
+
+    # Compute the Hamiltonian using the Cartesian B field and orientation
+    H0 = effective_hamiltonian(D, g_e, orientation, B_field)
+
+    # Calculate fidelities
+    fidelities = []
+    for frequency in frequencies:
+        fidelities.append(fidelity(t, initial_state, H0, n_evolution, evolution_operator, frequency, amp))
+
+    # Save the fidelities to a cache file
+    params_dict = {
+        'D': D,
+        'g_e': g_e,
+        'B_field': B_field,
+        'orientation': orientation,
+        'frequencies': frequencies,
+        't': t,
+        'n_evolution': n_evolution,
+        'amp': amp
+    }
+    save_fidelities_to_csv(cache_file, params_dict, fidelities)
+
+    return fidelities
+
 def load_fidelities_from_csv(file_path):
     """
     Load fidelities from a CSV file.
@@ -287,3 +343,44 @@ def odmr(D, g_e, B, polar, azimuthal, nv_orientation, frequencies, t, n_evolutio
     save_fidelities_to_csv(cache_file, params_dict, fidelities)
 
     return fidelities
+
+def compute_eigenvalues(D, g_e, orientation, B_field):
+    eigenvalues = effective_hamiltonian(D, g_e, orientation, B_field).eigenenergies()
+    
+    return eigenvalues
+
+def effective_hamiltonian(D, g_e, orientation, B_field):
+    # Normalize the orientation vector
+    n_x, n_y, n_z = orientation / np.linalg.norm(orientation)
+    
+    # Define spin-1 operators
+    Sx = qt.jmat(1, 'x')
+    Sy = qt.jmat(1, 'y')
+    Sz = qt.jmat(1, 'z')
+    
+    B_parallel, B_perpendicular = decompose_vector(orientation, B_field)
+    
+    # Hamiltonian H = 2π(D * (Sz^2) + g_e * (B_parallel * Sz))
+    return D * Sz**2 + g_e * (B_parallel * Sz + B_perpendicular * Sx)
+
+def decompose_vector(orientation, B_field):
+    # Normalize the orientation vector
+    orientation = np.array(orientation)
+    B_field = np.array(B_field)
+    
+    orientation_norm = np.linalg.norm(orientation)
+    
+    if orientation_norm == 0:
+        raise ValueError("Orientation vector must be non-zero.")
+    
+    # Unit vector along orientation
+    unit_orientation = orientation / orientation_norm
+    
+    # Projection of B_field onto orientation (parallel component)
+    B_parallel_magnitude = np.dot(B_field, unit_orientation)
+    B_parallel = B_parallel_magnitude * unit_orientation
+    
+    # Perpendicular component of B_field
+    B_perpendicular = B_field - B_parallel
+    
+    return np.linalg.norm(B_parallel), np.linalg.norm(B_perpendicular)
